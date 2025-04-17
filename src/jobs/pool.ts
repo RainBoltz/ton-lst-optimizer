@@ -5,6 +5,7 @@ import {
   SetPoolInterestRateParams,
   setPoolInterestRateViaSecretKey,
 } from "../utils/ton.js";
+import { SlackNotifier } from "../utils/slackNotifier.js";
 
 let lastRecord: any = null;
 let _getter_lock = false;
@@ -69,12 +70,12 @@ async function getInterestRate() {
           },
           apy: {
             pool:
-              (interestRate / 2 ** 24) *
-              ((365 * 24 * 60 * 60) / (65536 + 32768)) *
-              (1 - governanceFee / 2 ** 24),
+              ((interestRate / 2 ** 24) *
+                ((365 * 24 * 60 * 60) / 65536) *
+                (1 - governanceFee / 2 ** 24)) /
+              2,
             poolTaxFree:
-              (interestRate / 2 ** 24) *
-              ((365 * 24 * 60 * 60) / (65536 + 32768)),
+              ((interestRate / 2 ** 24) * ((365 * 24 * 60 * 60) / 65536)) / 2,
           },
         };
       },
@@ -90,7 +91,10 @@ async function getInterestRate() {
   }
 }
 
-export function scheduleGetInterestRate(params?: SetPoolInterestRateParams) {
+export function scheduleGetInterestRate(
+  params?: SetPoolInterestRateParams,
+  slack?: SlackNotifier
+) {
   logger.info("Scheduling interest rate fetch every 10 seconds");
   // Schedule the task to run every 10 seconds
   cron.schedule("*/10 * * * * *", () => {
@@ -119,6 +123,15 @@ export function scheduleGetInterestRate(params?: SetPoolInterestRateParams) {
               interestRate: interestRate.interestRate.value,
             };
             setPoolInterestRateViaSecretKey(setParams);
+          }
+          if (slack) {
+            slack.send({
+              text: `【Tonstakers Pool Data Updated】\n Interest rate: ${
+                interestRate!.interestRate.value
+              }, APY: ${(interestRate!.apy.pool * 100).toFixed(
+                2
+              )}%, Governance fee: ${interestRate!.governanceFee.value}`,
+            });
           }
         }
       })
